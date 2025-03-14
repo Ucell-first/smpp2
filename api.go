@@ -138,10 +138,14 @@ func (c *Client) SendSMS(msg *SMSMessage) (string, error) {
 	pdu.writeByte(dataCoding)  // data_coding
 	pdu.writeByte(0)           // sm_default_msg_id
 
-	// Instead of using message_payload TLV for long messages, let's use the standard approach
-	// just to see if it works better
-	pdu.writeByte(byte(len(msg.Message))) // sm_length
-	pdu.write(msg.Message)                // short_message
+	// Handle message length
+	if len(msg.Message) > 254 {
+		// Message too long, return an error
+		return "", fmt.Errorf("message too long (%d bytes), max is 254 bytes", len(msg.Message))
+	} else {
+		pdu.writeByte(byte(len(msg.Message))) // sm_length
+		pdu.write(msg.Message)                // short_message
+	}
 
 	// Send the PDU
 	resp, err := c.sendPDU(pdu)
@@ -150,7 +154,31 @@ func (c *Client) SendSMS(msg *SMSMessage) (string, error) {
 	}
 
 	if resp.commandStatus != 0 {
-		return "", fmt.Errorf("submit_sm failed with status: %d", resp.commandStatus)
+		// Map some common SMPP error codes
+		errorMessage := "unknown error"
+		switch resp.commandStatus {
+		case 1:
+			errorMessage = "message ID invalid"
+		case 2:
+			errorMessage = "bind failed"
+		case 3:
+			errorMessage = "invalid priority flag"
+		case 4:
+			errorMessage = "invalid registered delivery flag"
+		case 5:
+			errorMessage = "system error"
+		case 6:
+			errorMessage = "invalid source address"
+		case 7:
+			errorMessage = "invalid destination address"
+		case 8:
+			errorMessage = "invalid message ID"
+		case 10:
+			errorMessage = "invalid message"
+		case 88:
+			errorMessage = "throttled - rate limit exceeded"
+		}
+		return "", fmt.Errorf("submit_sm failed with status: %d (%s)", resp.commandStatus, errorMessage)
 	}
 
 	// Extract message ID from response
@@ -167,12 +195,11 @@ func (c *Client) SendSMS(msg *SMSMessage) (string, error) {
 	return messageID, nil
 }
 
-// SendLongSMS sends an SMS message that may exceed the standard length
 func (c *Client) SendLongSMS(msg *SMSMessage) (string, error) {
 	// Define maximum length based on encoding
-	maxLength := 160
+	maxLength := 153 // For segmented GSM messages, we use 153 chars instead of 160
 	if msg.IsUnicode {
-		maxLength = 70
+		maxLength = 67 // For segmented Unicode messages, we use 67 chars instead of 70
 	}
 
 	// If message is short enough, just send it normally
@@ -180,21 +207,51 @@ func (c *Client) SendLongSMS(msg *SMSMessage) (string, error) {
 		return c.SendSMS(msg)
 	}
 
-	// For longer messages, we'll split it into smaller parts
-	// This is a simplified approach - in production, you'd use SMPP's message segmentation
+	// For longer messages, we need proper segmentation
+	messageLen := len(msg.Message)
+	partCount := (messageLen + maxLength - 1) / maxLength // Ceiling division
 
-	// For simplicity, we'll just send the first part
-	shortMsg := &SMSMessage{
-		SourceAddr:            msg.SourceAddr,
-		DestAddr:              msg.DestAddr,
-		Message:               msg.Message[:maxLength],
-		DataCoding:            msg.DataCoding,
-		IsUnicode:             msg.IsUnicode,
-		IsBinary:              msg.IsBinary,
-		RequestDeliveryReport: msg.RequestDeliveryReport,
+	// We'll only return the ID of the first message part
+	var firstMessageID string
+
+	// Split message into parts and send each part
+	for i := 0; i < partCount; i++ {
+		// Calculate the start and end indices for this part
+		start := i * maxLength
+		end := start + maxLength
+		if end > messageLen {
+			end = messageLen
+		}
+
+		// Create message part
+		partMsg := &SMSMessage{
+			SourceAddr:            msg.SourceAddr,
+			DestAddr:              msg.DestAddr,
+			Message:               msg.Message[start:end],
+			DataCoding:            msg.DataCoding,
+			IsUnicode:             msg.IsUnicode,
+			IsBinary:              msg.IsBinary,
+			RequestDeliveryReport: msg.RequestDeliveryReport,
+		}
+
+		// Send message part
+		messageID, err := c.SendSMS(partMsg)
+		if err != nil {
+			return "", fmt.Errorf("failed to send part %d/%d: %w", i+1, partCount, err)
+		}
+
+		// Store the ID of the first message part
+		if i == 0 {
+			firstMessageID = messageID
+		}
+
+		// Add a delay between message parts to avoid throttling
+		if i < partCount-1 {
+			time.Sleep(200 * time.Millisecond)
+		}
 	}
 
-	return c.SendSMS(shortMsg)
+	return firstMessageID, nil
 }
 
 // Disconnect closes the connection to the SMPP server
