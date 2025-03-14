@@ -3,6 +3,7 @@ package smpp
 
 import (
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -137,17 +138,10 @@ func (c *Client) SendSMS(msg *SMSMessage) (string, error) {
 	pdu.writeByte(dataCoding)  // data_coding
 	pdu.writeByte(0)           // sm_default_msg_id
 
-	// Handle message length
-	if len(msg.Message) > 254 {
-		// Use message_payload TLV for longer messages
-		pdu.writeByte(0) // sm_length = 0
-
-		// Add message_payload TLV
-		pdu.writeTLV(0x0424, msg.Message)
-	} else {
-		pdu.writeByte(byte(len(msg.Message))) // sm_length
-		pdu.write(msg.Message)                // short_message
-	}
+	// Instead of using message_payload TLV for long messages, let's use the standard approach
+	// just to see if it works better
+	pdu.writeByte(byte(len(msg.Message))) // sm_length
+	pdu.write(msg.Message)                // short_message
 
 	// Send the PDU
 	resp, err := c.sendPDU(pdu)
@@ -156,7 +150,7 @@ func (c *Client) SendSMS(msg *SMSMessage) (string, error) {
 	}
 
 	if resp.commandStatus != 0 {
-		return "", errors.New("submit_sm failed")
+		return "", fmt.Errorf("submit_sm failed with status: %d", resp.commandStatus)
 	}
 
 	// Extract message ID from response
