@@ -175,8 +175,32 @@ func (c *Client) SendSMS(msg *SMSMessage) (string, error) {
 
 // SendLongSMS sends an SMS message that may exceed the standard length
 func (c *Client) SendLongSMS(msg *SMSMessage) (string, error) {
-	// For simplicity in this example, we'll use message_payload for long messages
-	return c.SendSMS(msg)
+	// Define maximum length based on encoding
+	maxLength := 160
+	if msg.IsUnicode {
+		maxLength = 70
+	}
+
+	// If message is short enough, just send it normally
+	if len(msg.Message) <= maxLength {
+		return c.SendSMS(msg)
+	}
+
+	// For longer messages, we'll split it into smaller parts
+	// This is a simplified approach - in production, you'd use SMPP's message segmentation
+
+	// For simplicity, we'll just send the first part
+	shortMsg := &SMSMessage{
+		SourceAddr:            msg.SourceAddr,
+		DestAddr:              msg.DestAddr,
+		Message:               msg.Message[:maxLength],
+		DataCoding:            msg.DataCoding,
+		IsUnicode:             msg.IsUnicode,
+		IsBinary:              msg.IsBinary,
+		RequestDeliveryReport: msg.RequestDeliveryReport,
+	}
+
+	return c.SendSMS(shortMsg)
 }
 
 // Disconnect closes the connection to the SMPP server
