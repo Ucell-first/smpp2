@@ -1,4 +1,3 @@
-// package/smpp/connection.go
 package smpp
 
 import (
@@ -11,7 +10,6 @@ import (
 	"time"
 )
 
-// connection handles the socket connection to the SMPP server
 type connection struct {
 	host           string
 	port           int
@@ -20,7 +18,6 @@ type connection struct {
 	readTimeout    time.Duration
 }
 
-// newConnection creates a new connection
 func newConnection(host string, port int, connectTimeout, readTimeout time.Duration) *connection {
 	return &connection{
 		host:           host,
@@ -30,7 +27,6 @@ func newConnection(host string, port int, connectTimeout, readTimeout time.Durat
 	}
 }
 
-// connect establishes a TCP connection to the SMPP server
 func (c *connection) connect() error {
 	addr := fmt.Sprintf("%s:%d", c.host, c.port)
 	dialer := net.Dialer{Timeout: c.connectTimeout}
@@ -44,7 +40,6 @@ func (c *connection) connect() error {
 	return nil
 }
 
-// connectTLS establishes a TLS connection to the SMPP server
 func (c *connection) connectTLS(config *tls.Config) error {
 	addr := fmt.Sprintf("%s:%d", c.host, c.port)
 	dialer := net.Dialer{Timeout: c.connectTimeout}
@@ -62,7 +57,6 @@ func (c *connection) connectTLS(config *tls.Config) error {
 	return nil
 }
 
-// close closes the connection
 func (c *connection) close() error {
 	if c.conn == nil {
 		return nil
@@ -73,7 +67,6 @@ func (c *connection) close() error {
 	return err
 }
 
-// writePDU writes a PDU to the connection
 func (c *connection) writePDU(p *pdu) error {
 	if c.conn == nil {
 		return errors.New("not connected")
@@ -86,7 +79,7 @@ func (c *connection) writePDU(p *pdu) error {
 	}
 
 	// Calculate PDU length
-	p.commandLength = uint32(16 + len(p.body)) // 16 bytes for header + body length
+	p.commandLength = uint32(16 + len(p.body))
 
 	// Write PDU header
 	headerBuf := make([]byte, 16)
@@ -100,7 +93,6 @@ func (c *connection) writePDU(p *pdu) error {
 		return err
 	}
 
-	// Write PDU body
 	if len(p.body) > 0 {
 		_, err = c.conn.Write(p.body)
 		if err != nil {
@@ -111,19 +103,16 @@ func (c *connection) writePDU(p *pdu) error {
 	return nil
 }
 
-// readPDU reads a PDU from the connection
 func (c *connection) readPDU() (*pdu, error) {
 	if c.conn == nil {
 		return nil, errors.New("not connected")
 	}
 
-	// Set deadline for read
 	err := c.conn.SetReadDeadline(time.Now().Add(c.readTimeout))
 	if err != nil {
 		return nil, err
 	}
 
-	// Read PDU header
 	headerBuf := make([]byte, 16)
 	_, err = io.ReadFull(c.conn, headerBuf)
 	if err != nil {

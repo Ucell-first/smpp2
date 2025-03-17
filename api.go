@@ -1,4 +1,3 @@
-// package/smpp/api.go
 package smpp
 
 import (
@@ -7,7 +6,6 @@ import (
 	"time"
 )
 
-// SMSMessage represents an SMS message to be sent
 type SMSMessage struct {
 	SourceAddr            string
 	DestAddr              string
@@ -18,7 +16,6 @@ type SMSMessage struct {
 	RequestDeliveryReport bool
 }
 
-// Client provides a simplified API for sending SMS messages via SMPP
 type Client struct {
 	conn        *connection
 	systemID    string
@@ -27,7 +24,6 @@ type Client struct {
 	sequenceNum uint32
 }
 
-// NewClient creates a new SMPP client
 func NewClient(host string, port int, systemID, password string) *Client {
 	return &Client{
 		conn:        newConnection(host, port, 10*time.Second, 30*time.Second),
@@ -38,7 +34,6 @@ func NewClient(host string, port int, systemID, password string) *Client {
 	}
 }
 
-// Connect establishes a connection to the SMPP server and binds as transmitter
 func (c *Client) Connect(useTLS bool) error {
 	var err error
 
@@ -52,7 +47,6 @@ func (c *Client) Connect(useTLS bool) error {
 		return err
 	}
 
-	// Bind as transmitter
 	err = c.bind()
 	if err != nil {
 		c.conn.close()
@@ -62,14 +56,9 @@ func (c *Client) Connect(useTLS bool) error {
 	return nil
 }
 
-// bind binds the client as a transmitter
 func (c *Client) bind() error {
 	pdu := newPDU(BIND_TRANSMITTER, c.nextSequence())
-
-	// Add system_id (C-string)
 	pdu.writeString(c.systemID)
-
-	// Add password (C-string)
 	pdu.writeString(c.password)
 
 	// Add system_type (C-string), interface version, addr_ton, addr_npi, address_range
@@ -92,7 +81,6 @@ func (c *Client) bind() error {
 	return nil
 }
 
-// SendSMS sends an SMS message
 func (c *Client) SendSMS(msg *SMSMessage) (string, error) {
 	if !c.bound {
 		return "", errors.New("not bound to SMPP server")
@@ -291,7 +279,6 @@ func (c *Client) sendPDU(pdu *pdu) (*pdu, error) {
 	return c.conn.readPDU()
 }
 
-// SMPP Command IDs
 const (
 	BIND_TRANSMITTER      uint32 = 0x00000002
 	BIND_TRANSMITTER_RESP uint32 = 0x80000002
