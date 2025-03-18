@@ -60,8 +60,6 @@ func (c *Client) bind() error {
 	pdu := newPDU(BIND_TRANSMITTER, c.nextSequence())
 	pdu.writeString(c.systemID)
 	pdu.writeString(c.password)
-
-	// Add system_type (C-string), interface version, addr_ton, addr_npi, address_range
 	pdu.writeString("") // system_type
 	pdu.writeByte(0x34) // interface version (3.4)
 	pdu.writeByte(0)    // addr_ton
@@ -94,7 +92,6 @@ func (c *Client) SendSMS(msg *SMSMessage) (string, error) {
 		dataCoding = 0x04 // Binary
 	}
 
-	// Create PDU
 	pdu := newPDU(SUBMIT_SM, c.nextSequence())
 
 	// Add mandatory parameters
